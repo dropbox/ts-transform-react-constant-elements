@@ -1,7 +1,7 @@
 // tslint:disable:no-console
 import * as ts from "typescript";
 
-const REACT_REGEX = /['"]react['"]/g;
+const REACT_REGEX = /['"]react['"]/;
 
 /**
  * Check if node is a prologue directive (e.g "use strict")
@@ -40,6 +40,10 @@ function isMutableProp(attr: ts.JsxAttributeLike): boolean {
     return true;
   }
   const { initializer } = attr;
+  // cases like <button enabled />
+  if (!initializer) {
+    return false;
+  }
   // foo="bar"
   if (ts.isStringLiteral(initializer)) {
     return false;
@@ -72,16 +76,20 @@ function isMutableProp(attr: ts.JsxAttributeLike): boolean {
 function isConstantElement(
   el: ts.Node
 ): el is ts.JsxSelfClosingElement & boolean {
+  // We only handle self-closing el for now
+  // e.g: <img src="foo"/>
+  // TODO: We can support immutable children but later
+  if (!ts.isJsxSelfClosingElement(el)) {
+    return false;
+  }
+
+  // No attributes, e.g <br/>
   return (
-    // Has to be self closing, e.g: <br />
-    // TODO: We can support immutable children but later
-    ts.isJsxSelfClosingElement(el) &&
-    // No attributes, e.g <br/>
-    (!el.attributes ||
-      !el.attributes.properties ||
-      !el.attributes.properties.length ||
-      // no mutable prop
-      !el.attributes.properties.find(isMutableProp))
+    !el.attributes ||
+    !el.attributes.properties ||
+    !el.attributes.properties.length ||
+    // no mutable prop
+    !el.attributes.properties.find(isMutableProp)
   );
 }
 
