@@ -142,15 +142,11 @@ function constantElementVisitor(
   return visitor;
 }
 
-export interface Opts {
-  verbose?: boolean;
-}
-
-function createVisitor(
+function visitSourceFile(
   ctx: ts.TransformationContext,
   sf: ts.SourceFile,
   opts?: Opts
-): ts.Visitor {
+) {
   /**
    * Find the 1st node that we can inject hoisted variable. This means:
    * 1. Pass the prologue directive
@@ -166,33 +162,28 @@ function createVisitor(
     statements: []
   };
   const elVisitor = constantElementVisitor(ctx, hoistedVariables);
-  const visitor: ts.Visitor = node => {
-    // Find 1st node to hoist
-    if (node === firstHoistableNode) {
-      // Find all hoistable constant elements in other statements
-      // We could have modified the statement here and return the new array,
-      // but that means we have to null out other statements when they get
-      // visited, which seems to cause lexical scoping issue
-      sf.statements.forEach(n => ts.visitNode(n, elVisitor));
-      if (opts.verbose) {
-        console.log(
-          `Hoisting ${hoistedVariables.nodes.length} elements in ${
-            sf.fileName
-          }:`
-        );
-        hoistedVariables.nodes.forEach(n => console.log(`${n.getText(sf)}`));
-      }
-      return [node, ...hoistedVariables.statements];
-    } else if (sf.statements.includes(node as ts.Statement)) {
-      return ts.visitEachChild(node, elVisitor, ctx);
-    }
-    return ts.visitEachChild(node, visitor, ctx);
-  };
-  return visitor;
+  const statements = sf.statements.map(node => ts.visitNode(node, elVisitor));
+  if (opts.verbose) {
+    console.log(
+      `Hoisting ${hoistedVariables.nodes.length} elements in ${sf.fileName}:`
+    );
+    hoistedVariables.nodes.forEach(n => console.log(`${n.getText(sf)}`));
+  }
+  // Inject hoisted variables
+  statements.splice(
+    statements.indexOf(firstHoistableNode) + 1,
+    0,
+    ...hoistedVariables.statements
+  );
+  return ts.updateSourceFileNode(sf, statements);
+}
+
+export interface Opts {
+  verbose?: boolean;
 }
 
 export function transform(
   opts: Opts = {}
 ): ts.TransformerFactory<ts.SourceFile> {
-  return ctx => sf => ts.visitNode(sf, createVisitor(ctx, sf, opts));
+  return ctx => sf => visitSourceFile(ctx, sf, opts);
 }
