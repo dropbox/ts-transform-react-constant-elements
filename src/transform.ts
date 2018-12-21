@@ -131,7 +131,7 @@ function visitSourceFile(
   ctx: ts.TransformationContext,
   sf: ts.SourceFile,
   opts?: Opts
-) {
+): ts.SourceFile {
   /**
    * Find the 1st node that we can inject hoisted variable. This means:
    * 1. Pass the prologue directive
@@ -142,6 +142,11 @@ function visitSourceFile(
   const firstHoistableNodeIndex = sf.statements.findIndex(
     node => isNotPrologueDirective(node) && isReactImport(node, sf)
   );
+  // Can't find where to hoist
+  if (!~firstHoistableNodeIndex) {
+    return sf;
+  }
+
   const hoistedVariables: ts.VariableStatement[] = [];
   const elVisitor = constantElementVisitor(ctx, hoistedVariables);
 
@@ -158,12 +163,18 @@ function visitSourceFile(
     );
   }
 
-  return ts.updateSourceFileNode(sf, [
-    ...sf.statements.slice(0, firstHoistableNodeIndex + 1),
-    // Inject hoisted variables
-    ...hoistedVariables,
-    ...transformedStatements
-  ]);
+  return ts.updateSourceFileNode(
+    sf,
+    ts.setTextRange(
+      ts.createNodeArray([
+        ...sf.statements.slice(0, firstHoistableNodeIndex + 1),
+        // Inject hoisted variables
+        ...hoistedVariables,
+        ...transformedStatements
+      ]),
+      sf.statements
+    )
+  );
 }
 
 export interface Opts {
