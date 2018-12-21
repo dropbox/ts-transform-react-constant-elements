@@ -93,11 +93,6 @@ function isConstantElement(
   );
 }
 
-interface HoistedVariables {
-  nodes: ts.JsxSelfClosingElement[];
-  statements: ts.VariableStatement[];
-}
-
 /**
  * Visit nodes recursively and try to determine if node's
  * considered a constant node.
@@ -109,33 +104,23 @@ interface HoistedVariables {
  */
 function constantElementVisitor(
   ctx: ts.TransformationContext,
-  hoistedVariables: HoistedVariables
+  hoistedVariables: ts.VariableStatement[]
 ): ts.Visitor {
   const visitor: ts.Visitor = node => {
     if (isConstantElement(node)) {
-      let index = hoistedVariables.nodes.indexOf(node);
-      // If we haven't added this to the list, create a unique hoisted var
-      // for it
-      if (!~index) {
-        const variable = ts.createUniqueName("hoisted_constant_element");
-        // Store the node to replace later
-        hoistedVariables.nodes.push(node);
-        // Store the variable assignement to hoist later
-        hoistedVariables.statements.push(
-          ts.createVariableStatement(
-            undefined,
-            ts.createVariableDeclarationList([
-              ts.createVariableDeclaration(variable, undefined, node)
-            ])
-          )
-        );
-        index = hoistedVariables.nodes.length - 1;
-      }
+      const variable = ts.createUniqueName("hoisted_constant_element");
+      const statement = ts.createVariableStatement(
+        undefined,
+        ts.createVariableDeclarationList([
+          ts.createVariableDeclaration(variable, undefined, node)
+        ])
+      );
+      // Store the variable assignement to hoist later
+      hoistedVariables.push(statement);
+
       // Replace <foo /> with {hoisted_constant_element_1}
       // TODO: Figure out case like `return <foo />
-      return ts.createJsxExpression(undefined, hoistedVariables.statements[
-        index
-      ].declarationList.declarations[0].name as ts.Identifier);
+      return ts.createJsxExpression(undefined, variable);
     }
     return ts.visitEachChild(node, visitor, ctx);
   };
@@ -157,10 +142,7 @@ function visitSourceFile(
   const firstHoistableNodeIndex = sf.statements.findIndex(
     node => isNotPrologueDirective(node) && isReactImport(node, sf)
   );
-  const hoistedVariables: HoistedVariables = {
-    nodes: [],
-    statements: []
-  };
+  const hoistedVariables: ts.VariableStatement[] = [];
   const elVisitor = constantElementVisitor(ctx, hoistedVariables);
 
   // We assume we only care about nodes after React import
@@ -169,15 +151,17 @@ function visitSourceFile(
     .map(node => ts.visitNode(node, elVisitor));
   if (opts.verbose) {
     console.log(
-      `Hoisting ${hoistedVariables.nodes.length} elements in ${sf.fileName}:`
+      `Hoisting ${hoistedVariables.length} elements in ${sf.fileName}:`
     );
-    hoistedVariables.nodes.forEach(n => console.log(`${n.getText(sf)}`));
+    hoistedVariables.forEach(n =>
+      console.log(n.declarationList.declarations[0].initializer.getText(sf))
+    );
   }
 
   return ts.updateSourceFileNode(sf, [
     ...sf.statements.slice(0, firstHoistableNodeIndex + 1),
     // Inject hoisted variables
-    ...hoistedVariables.statements,
+    ...hoistedVariables,
     ...transformedStatements
   ]);
 }
