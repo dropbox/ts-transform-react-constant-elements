@@ -154,7 +154,7 @@ function visitSourceFile(
    * 3. Pass top level comments (not a node)
    * 4. Pass React import (bc hoisted var uses React)
    */
-  const firstHoistableNode = sf.statements.find(
+  const firstHoistableNodeIndex = sf.statements.findIndex(
     node => isNotPrologueDirective(node) && isReactImport(node, sf)
   );
   const hoistedVariables: HoistedVariables = {
@@ -162,20 +162,24 @@ function visitSourceFile(
     statements: []
   };
   const elVisitor = constantElementVisitor(ctx, hoistedVariables);
-  const statements = sf.statements.map(node => ts.visitNode(node, elVisitor));
+
+  // We assume we only care about nodes after React import
+  const transformedStatements = sf.statements
+    .slice(firstHoistableNodeIndex + 1, sf.statements.length)
+    .map(node => ts.visitNode(node, elVisitor));
   if (opts.verbose) {
     console.log(
       `Hoisting ${hoistedVariables.nodes.length} elements in ${sf.fileName}:`
     );
     hoistedVariables.nodes.forEach(n => console.log(`${n.getText(sf)}`));
   }
-  // Inject hoisted variables
-  statements.splice(
-    statements.indexOf(firstHoistableNode) + 1,
-    0,
-    ...hoistedVariables.statements
-  );
-  return ts.updateSourceFileNode(sf, statements);
+
+  return ts.updateSourceFileNode(sf, [
+    ...sf.statements.slice(0, firstHoistableNodeIndex + 1),
+    // Inject hoisted variables
+    ...hoistedVariables.statements,
+    ...transformedStatements
+  ]);
 }
 
 export interface Opts {
