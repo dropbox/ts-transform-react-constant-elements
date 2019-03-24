@@ -4,6 +4,22 @@
 
 This is a TypeScript AST Transformer that can speed up reconciliation and reduce garbage collection pressure by hoisting React elements to the highest possible scope, preventing multiple unnecessary reinstantiations, similar to [babel-plugin-transform-react-constant-elements](https://babeljs.io/docs/en/babel-plugin-transform-react-constant-elements).
 
+Example:
+```ts
+const Hr = () => {
+  return <hr className="hr" />;
+};
+
+// becomes 
+const _ref = <hr className="hr" />;
+
+const Hr = () => {
+  return _ref;
+};
+```
+
+This is especially useful for hoisting static but expensive content such as SVG.
+
 ## Usage
 First of all, you need some level of familiarity with the [TypeScript Compiler API](https://github.com/Microsoft/TypeScript/wiki/Using-the-Compiler-API).
 
