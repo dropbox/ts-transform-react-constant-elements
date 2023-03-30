@@ -27,7 +27,7 @@
   },
   "homepage": "https://github.com/dropbox/ts-transform-react-constant-elements#readme",
   "dependencies": {
-    "typescript": "4"
+    "typescript": "5"
   },
   "devDependencies": {
     "@types/chai": "^4.2.14",
